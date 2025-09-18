@@ -1,36 +1,38 @@
 import React, { useState } from "react";
 import { AlertCircle, Loader } from "lucide-react";
-import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/lib/supabase";
 
-export const ProfessionalVerificationForm: React.FC = () => {
-  const { session } = useAuth();
-  const [companyName, setCompanyName] = useState("");
-  const [siret, setSiret] = useState("");
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+interface VerificationStepProps {
+  onBack: () => void;
+  onComplete: () => void;
+}
 
-  // Gestion des erreurs globales
-  const [errors, setErrors] = useState<string | null>(null);
-
-  // Pour la CIN
+export const VerificationStep: React.FC<VerificationStepProps> = ({
+  onBack,
+  onComplete,
+}) => {
+  const [kbisFile, setKbisFile] = useState<File | null>(null);
   const [cinFormat, setCinFormat] = useState<"pdf" | "images">("pdf");
   const [cinFiles, setCinFiles] = useState<File[]>([]);
   const [cinError, setCinError] = useState<string | null>(null);
 
-  // ✅ Limite : 5 Mo
+  const [errors, setErrors] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // ✅ Limite de 5 Mo
   const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
-  const handleFileSelect = (file: File) => {
+  const handleKbisSelect = (file: File) => {
     const allowedTypes = ["application/pdf", "image/jpeg", "image/png"];
     if (!allowedTypes.includes(file.type)) {
-      setErrors("Format non supporté. Utilisez PDF, JPG ou PNG.");
+      setErrors("Format non supporté (PDF, JPG ou PNG uniquement).");
       return;
     }
     if (file.size > MAX_FILE_SIZE) {
-      setErrors("Le fichier ne doit pas dépasser 5 MB.");
+      setErrors("Le fichier KBIS ne doit pas dépasser 5 Mo.");
       return;
     }
-    setUploadedFile(file);
+    setKbisFile(file);
     setErrors(null);
   };
 
@@ -38,25 +40,19 @@ export const ProfessionalVerificationForm: React.FC = () => {
     e.preventDefault();
     setErrors(null);
 
-    if (!session?.access_token) {
-      setErrors("❌ Votre session a expiré, veuillez vous reconnecter.");
-      return;
-    }
-    if (!companyName.trim() || !siret.trim() || !uploadedFile) {
-      setErrors("Tous les champs sont obligatoires.");
+    if (!kbisFile) {
+      setErrors("Le document KBIS est obligatoire.");
       return;
     }
 
-    // Validation CIN
+    // ✅ Validation CIN
     if (cinFormat === "pdf") {
       if (
         cinFiles.length !== 1 ||
         cinFiles[0].type !== "application/pdf" ||
         cinFiles[0].size > MAX_FILE_SIZE
       ) {
-        setCinError(
-          "Veuillez fournir un fichier PDF (≤ 5 MB) unique pour la CIN.",
-        );
+        setCinError("Veuillez fournir un fichier PDF ≤ 5 Mo pour la CIN.");
         return;
       }
     } else {
@@ -66,19 +62,21 @@ export const ProfessionalVerificationForm: React.FC = () => {
           (f) => f.type.startsWith("image/") && f.size <= MAX_FILE_SIZE,
         )
       ) {
-        setCinError("Veuillez fournir 2 images (recto/verso), ≤ 5 MB chacune.");
+        setCinError("Veuillez fournir 2 images (recto/verso), ≤ 5 Mo chacune.");
         return;
       }
     }
     setCinError(null);
 
     setIsLoading(true);
-
     try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) throw new Error("Session expirée");
+
       const formData = new FormData();
-      formData.append("company_name", companyName);
-      formData.append("siret", siret);
-      formData.append("kbis_document", uploadedFile);
+      formData.append("kbis_document", kbisFile);
       cinFiles.forEach((file) => {
         formData.append("cin_document", file);
       });
@@ -89,79 +87,50 @@ export const ProfessionalVerificationForm: React.FC = () => {
         body: formData,
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        // ✅ Message inline de succès (tu peux aussi rediriger si tu veux)
-        setErrors(null);
-        alert(
-          "✅ Votre demande est envoyée. Elle sera examinée dans les 24-48 heures.",
-        );
-        window.location.href = "/dashboard";
-      } else {
+      if (!res.ok) {
         const err = await res.json();
-        setErrors(err.error || "Une erreur est survenue côté serveur.");
+        throw new Error(err.error || "Erreur serveur");
       }
+
+      console.log("✅ Documents soumis avec succès");
+      alert("✅ Vos documents ont bien été envoyés pour vérification.");
+      onComplete();
     } catch (err) {
-      console.error(err);
-      setErrors("❌ Une erreur est survenue, merci de réessayer.");
+      console.error("❌ Erreur soumission:", err);
+      setErrors("Erreur lors de l’envoi des documents.");
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Nom entreprise */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Nom de l'entreprise *
-        </label>
-        <input
-          type="text"
-          value={companyName}
-          onChange={(e) => setCompanyName(e.target.value)}
-          className="w-full border rounded-lg p-3"
-          placeholder="Garage Dupont"
-        />
-      </div>
+    <form onSubmit={handleSubmit} className="space-y-6 p-6">
+      <h2 className="text-2xl font-bold">Vérification des documents</h2>
+      <p className="text-gray-600">
+        Merci de fournir votre extrait KBIS et votre pièce d’identité (CIN).
+      </p>
 
-      {/* SIRET */}
+      {/* Upload KBIS */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Numéro SIRET *
-        </label>
-        <input
-          type="text"
-          value={siret}
-          onChange={(e) =>
-            setSiret(e.target.value.replace(/\D/g, "").slice(0, 14))
-          }
-          className="w-full border rounded-lg p-3"
-          placeholder="12345678901234"
-        />
-      </div>
-
-      {/* KBIS */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Document KBIS *
+          Extrait KBIS *
         </label>
         <input
           type="file"
           accept=".pdf,.jpg,.jpeg,.png"
           onChange={(e) =>
-            e.target.files && handleFileSelect(e.target.files[0])
+            e.target.files && handleKbisSelect(e.target.files[0])
           }
         />
-        {uploadedFile && (
-          <p className="text-sm text-green-600 mt-1">📄 {uploadedFile.name}</p>
+        {kbisFile && (
+          <p className="text-sm text-green-600 mt-1">📄 {kbisFile.name}</p>
         )}
       </div>
 
       {/* CIN */}
-      <div className="mb-4">
+      <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Pièce d'identité du gérant (CIN)
+          Pièce d'identité du gérant (CIN) *
         </label>
 
         {/* Choix format */}
@@ -198,7 +167,7 @@ export const ProfessionalVerificationForm: React.FC = () => {
           </label>
         </div>
 
-        {/* Upload */}
+        {/* Upload fichiers */}
         {cinFormat === "pdf" ? (
           <input
             type="file"
@@ -207,7 +176,6 @@ export const ProfessionalVerificationForm: React.FC = () => {
               const file = e.target.files?.[0];
               setCinFiles(file ? [file] : []);
             }}
-            className="block w-full text-sm text-gray-700"
           />
         ) : (
           <input
@@ -218,11 +186,10 @@ export const ProfessionalVerificationForm: React.FC = () => {
               const files = e.target.files ? Array.from(e.target.files) : [];
               setCinFiles(files);
             }}
-            className="block w-full text-sm text-gray-700"
           />
         )}
 
-        {/* Aperçu */}
+        {/* Aperçu fichiers */}
         {cinFiles.length > 0 && (
           <ul className="mt-2 text-sm text-gray-600 list-disc pl-5">
             {cinFiles.map((f, i) => (
@@ -231,7 +198,6 @@ export const ProfessionalVerificationForm: React.FC = () => {
           </ul>
         )}
 
-        {/* Erreur CIN */}
         {cinError && <p className="text-red-500 text-sm mt-1">{cinError}</p>}
       </div>
 
@@ -242,15 +208,24 @@ export const ProfessionalVerificationForm: React.FC = () => {
         </p>
       )}
 
-      {/* Submit */}
-      <button
-        type="submit"
-        disabled={isLoading}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-6 rounded-lg font-semibold flex items-center justify-center"
-      >
-        {isLoading && <Loader className="animate-spin h-5 w-5 mr-2" />}
-        Envoyer ma demande
-      </button>
+      {/* Boutons navigation */}
+      <div className="flex justify-between items-center pt-6 border-t">
+        <button
+          type="button"
+          onClick={onBack}
+          className="px-6 py-3 text-gray-600 hover:text-gray-800 font-medium"
+        >
+          Retour
+        </button>
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="px-8 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center justify-center"
+        >
+          {isLoading && <Loader className="animate-spin h-5 w-5 mr-2" />}
+          Envoyer mes documents
+        </button>
+      </div>
     </form>
   );
 };
