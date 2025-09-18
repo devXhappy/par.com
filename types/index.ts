@@ -4,7 +4,7 @@ export interface User {
   name: string;
   phone?: string;
   whatsapp?: string;
-  type: 'individual' | 'professional';
+  type: "individual" | "professional";
   companyName?: string;
   companyLogo?: string;
   address?: string;
@@ -17,9 +17,15 @@ export interface User {
   specialties?: string[];
   verified: boolean;
   emailVerified?: boolean;
-  contactPreferences?: ('whatsapp' | 'phone' | 'email')[];
+  contactPreferences?: ("whatsapp" | "phone" | "email")[];
   createdAt: Date;
   lastLoginAt?: Date;
+  onboardingStatus?:
+    | "incomplete_profile"
+    | "incomplete_payment"
+    | "incomplete_verification"
+    | "pending_approval"
+    | "completed";
 }
 
 export interface Vehicle {
@@ -33,20 +39,20 @@ export interface Vehicle {
   model: string;
   year: number;
   mileage?: number;
-  fuelType?: 'gasoline' | 'diesel' | 'electric' | 'hybrid';
-  condition: 'new' | 'used' | 'damaged';
+  fuelType?: "gasoline" | "diesel" | "electric" | "hybrid";
+  condition: "new" | "used" | "damaged";
   price: number;
   location: string;
   images: string[];
   features: string[];
   isPremium: boolean;
-  premiumType?: 'daily' | 'weekly' | 'monthly';
+  premiumType?: "daily" | "weekly" | "monthly";
   premiumExpiresAt?: Date;
   createdAt: Date;
   updatedAt: Date;
   views: number;
   favorites: number;
-  status: 'draft' | 'pending' | 'approved' | 'rejected';
+  status: "draft" | "pending" | "approved" | "rejected";
 }
 
 export interface Message {
@@ -74,14 +80,36 @@ export interface SearchFilters {
   condition?: string;
   location?: string;
   searchTerm?: string;
-  sortBy?: 'date' | 'price_asc' | 'price_desc' | 'mileage';
+  sortBy?: "date" | "price_asc" | "price_desc" | "mileage";
 }
 
 // Type pour les catégories principales
-export type CategoryId = 'voiture-utilitaire' | 'moto-scooter-quad' | 'nautisme-sport-aerien' | 'services' | 'pieces';
+export type CategoryId =
+  | "voiture-utilitaire"
+  | "moto-scooter-quad"
+  | "nautisme-sport-aerien"
+  | "services"
+  | "pieces";
 
 // Type pour les sous-catégories
-export type SubcategoryId = 'voiture' | 'utilitaire' | 'caravane' | 'remorque' | 'moto' | 'scooter' | 'quad' | 'bateau' | 'jetski' | 'aerien' | 'reparation' | 'remorquage' | 'entretien' | 'autre-service' | 'piece-voiture' | 'piece-moto' | 'autre-piece';
+export type SubcategoryId =
+  | "voiture"
+  | "utilitaire"
+  | "caravane"
+  | "remorque"
+  | "moto"
+  | "scooter"
+  | "quad"
+  | "bateau"
+  | "jetski"
+  | "aerien"
+  | "reparation"
+  | "remorquage"
+  | "entretien"
+  | "autre-service"
+  | "piece-voiture"
+  | "piece-moto"
+  | "autre-piece";
 
 export interface PremiumOption {
   id: string;

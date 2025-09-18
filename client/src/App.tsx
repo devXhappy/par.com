@@ -157,6 +157,20 @@ function AppContent() {
 
   const isAdminRoute = location.startsWith("/admin");
 
+  // 🚫 Blocage global si onboarding non terminé
+  if (
+    isAuthenticated &&
+    dbUser?.type === "professional" &&
+    dbUser?.onboardingStatus !== "completed"
+  ) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-90 z-[9999] flex items-center justify-center">
+        <OnboardingRouter />
+      </div>
+    );
+  }
+
+  // ✅ retour normal de l'app
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
       {!isAdminRoute && (
@@ -206,40 +220,22 @@ function AppContent() {
               <Conseils />
             </Route>
             <Route path="/about">
-              <AboutPage
-                onBack={() => setLocation("/")}
-                setCurrentView={setCurrentView}
-              />
+              <AboutPage onBack={() => setLocation("/")} setCurrentView={setCurrentView} />
             </Route>
             <Route path="/terms">
-              <TermsPage
-                onBack={() => setLocation("/")}
-                setCurrentView={setCurrentView}
-              />
+              <TermsPage onBack={() => setLocation("/")} setCurrentView={setCurrentView} />
             </Route>
             <Route path="/privacy">
-              <PrivacyPage
-                onBack={() => setLocation("/")}
-                setCurrentView={setCurrentView}
-              />
+              <PrivacyPage onBack={() => setLocation("/")} setCurrentView={setCurrentView} />
             </Route>
             <Route path="/legal">
-              <LegalPage
-                onBack={() => setLocation("/")}
-                setCurrentView={setCurrentView}
-              />
+              <LegalPage onBack={() => setLocation("/")} setCurrentView={setCurrentView} />
             </Route>
             <Route path="/help">
-              <HelpPage
-                onBack={() => setLocation("/")}
-                setCurrentView={setCurrentView}
-              />
+              <HelpPage onBack={() => setLocation("/")} setCurrentView={setCurrentView} />
             </Route>
             <Route path="/safety">
-              <SafetyTipsPage
-                onBack={() => setLocation("/")}
-                setCurrentView={setCurrentView}
-              />
+              <SafetyTipsPage onBack={() => setLocation("/")} setCurrentView={setCurrentView} />
             </Route>
             <Route path="/search">
               <SearchPage />
@@ -259,8 +255,7 @@ function AppContent() {
             </Route>
             <Route path="/admin">
               {() => {
-                const isAdminAuth =
-                  localStorage.getItem("admin_authenticated") === "true";
+                const isAdminAuth = localStorage.getItem("admin_authenticated") === "true";
                 return isAdminAuth ? (
                   <AdminDashboardClean onBack={() => setLocation("/")} />
                 ) : (
@@ -275,10 +270,7 @@ function AppContent() {
               <StripeSuccess />
             </Route>
             <Route path="/admin-login">
-              <AdminLogin
-                onLoginSuccess={() => setLocation("/admin")}
-                onBack={() => setLocation("/")}
-              />
+              <AdminLogin onLoginSuccess={() => setLocation("/admin")} onBack={() => setLocation("/")} />
             </Route>
             <Route path="/admin-test">
               <AdminTest />
@@ -312,20 +304,14 @@ function AppContent() {
           setShowProfileSetup(false);
           setOnboardingStep("choice");
         }}
-        onPersonalAccount={() => {
-          setOnboardingStep("personal");
-        }}
-        onProfessionalAccount={() => {
-          setOnboardingStep("professional");
-        }}
+        onPersonalAccount={() => setOnboardingStep("personal")}
+        onProfessionalAccount={() => setOnboardingStep("professional")}
       />
 
       {/* Formulaire compte personnel */}
       <PersonalProfileForm
         isOpen={showProfileSetup && onboardingStep === "personal"}
-        onClose={() => {
-          setOnboardingStep("choice");
-        }}
+        onClose={() => setOnboardingStep("choice")}
         onComplete={async () => {
           setShowProfileSetup(false);
           setOnboardingStep("choice");
