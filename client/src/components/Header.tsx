@@ -11,13 +11,13 @@ import {
   Settings,
   Car,
 } from "lucide-react";
-import { useApp } from "../contexts/AppContext";
-import { useAuth } from "../hooks/useAuth";
-import { useUnreadMessages } from "../hooks/useUnreadMessages";
+import { useApp } from "@/contexts/AppContext";
+import { useAuth } from "@/hooks/useAuth";
+import { useUnreadMessages } from "@/hooks/useUnreadMessages";
 import { useAuthService } from "../services/AuthService";
 import { UserMenu } from "./auth/UserMenu";
-import logoPath from "@assets/logo-transparent_1753108744744.png";
-import accidentIcon from "@assets/accident_1753354197012.png";
+import logoPath from "@/assets/logo-transparent_1753108744744.png";
+//import accidentIcon from "@/assets/accident_1753354197012.png";
 
 interface HeaderProps {
   currentView: string;

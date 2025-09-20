@@ -7,8 +7,8 @@ import {
   Calendar,
   Crown,
 } from "lucide-react";
-import { Vehicle } from "../types";
-import brandIcon from "@assets/Brand_1752260033631.png";
+import { Vehicle } from "@/types";
+import brandIcon from "@/assets/Brand_1752260033631.png";
 import { VehicleCard } from "./VehicleCard";
 
 interface CategorySectionProps {

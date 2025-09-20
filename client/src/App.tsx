@@ -1,33 +1,33 @@
-import { OnboardingRouter } from "./components/onboarding/OnboardingRouter";
+import { OnboardingRouter } from "@/components/onboarding/OnboardingRouter";
 import React, { useState, useCallback } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
-import { AppProvider, useApp } from "./contexts/AppContext";
+import { AppProvider, useApp } from "@/contexts/AppContext";
 import { Router, Route, Switch, useLocation } from "wouter";
-import { AuthProvider } from "./contexts/AuthContext";
-import { Header } from "./components/Header";
-import { Hero } from "./components/Hero";
-import { VehicleListings } from "./components/VehicleListings";
-import { VehicleDetail } from "./components/VehicleDetail";
-import { UnifiedAuthModal } from "./components/UnifiedAuthModal";
-import { ProfileSetupModal } from "./components/ProfileSetupModal";
-import { PersonalProfileForm } from "./components/PersonalProfileForm";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { Header } from "@/components/Header";
+import { Hero } from "@/components/Hero";
+import { VehicleListings } from "@/components/VehicleListings";
+import { VehicleDetail } from "@/components/VehicleDetail";
+import { UnifiedAuthModal } from "@/components/UnifiedAuthModal";
+import { ProfileSetupModal } from "@/components/ProfileSetupModal";
+import { PersonalProfileForm } from "@/components/PersonalProfileForm";
 import StripeSuccess from "./pages/StripeSuccess";
-import { Dashboard } from "./components/Dashboard";
-import { CreateListingForm } from "./components/CreateListingForm";
-import { DraggableModal } from "./components/DraggableModal";
-import { Conseils } from "./components/Conseils";
-import { SearchResults } from "./components/SearchResults";
-import { Footer } from "./components/Footer";
+import { Dashboard } from "@/components/Dashboard";
+import { CreateListingForm } from "@/components/CreateListingForm";
+import { DraggableModal } from "@/components/DraggableModal";
+import { Conseils } from "@/components/Conseils";
+import { SearchResults } from "@/components/SearchResults";
+import { Footer } from "@/components/Footer";
 import { AboutPage } from "./pages/AboutPage";
 import { TermsPage } from "./pages/TermsPage";
 import { PrivacyPage } from "./pages/PrivacyPage";
 import { LegalPage } from "./pages/LegalPage";
 import { HelpPage } from "./pages/HelpPage";
 import { SafetyTipsPage } from "./pages/SafetyTipsPage";
-import { AdminDashboardClean } from "./components/AdminDashboardClean";
-import { AdminLogin } from "./components/AdminLogin";
-import { AdminTest } from "./components/AdminTest";
+import { AdminDashboardClean } from "@/components/AdminDashboardClean";
+import { AdminLogin } from "@/components/AdminLogin";
+import { AdminTest } from "@/components/AdminTest";
 import { Messages } from "./pages/Messages";
 import { SearchPage } from "./pages/SearchPage";
 import ProShop from "./pages/ProShop";
@@ -35,7 +35,8 @@ import SubscriptionPurchase from "./pages/SubscriptionPurchase";
 import { AuthCallback } from "./pages/AuthCallback";
 import { ProfessionalVerification } from "./pages/ProfessionalVerification";
 import ProfessionalProfile from "./pages/ProfessionalProfile";
-import { useAuth } from "./hooks/useAuth";
+import { useAuth } from "@/hooks/useAuth";
+import { detectOnboardingState } from "@/utils/onboardingDetector";
 
 function AppContent() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -47,6 +48,12 @@ function AppContent() {
     "choice" | "personal" | "professional"
   >("choice");
   const [refreshVehicles, setRefreshVehicles] = useState(false);
+  
+  // États pour onboarding intelligent
+  const [professionalAccount, setProfessionalAccount] = useState(null);
+  const [subscription, setSubscription] = useState(null);
+  const [onboardingLoading, setOnboardingLoading] = useState(false);
+  
   const { selectedVehicle, setSelectedVehicle, setSearchFilters } = useApp();
   const { isAuthenticated, dbUser, isLoading, refreshDbUser } = useAuth();
 
@@ -73,17 +80,93 @@ function AppContent() {
     [setLocation],
   );
 
-  // Détection onboarding
-  React.useEffect(() => {
-    if (isLoading) return;
-    if (isAuthenticated && (!dbUser || !dbUser?.profile_completed)) {
-      console.log(
-        "🔧 Onboarding détecté pour:",
-        dbUser?.email || "utilisateur non synchronisé",
-      );
-      setShowProfileSetup(true);
+  // Charger données professionnelles
+  const loadProfessionalData = useCallback(async (userId: string) => {
+    if (onboardingLoading) return; // Éviter les appels multiples
+    
+    setOnboardingLoading(true);
+    try {
+      // Charger compte professionnel si c'est un pro
+      if (dbUser?.type === 'professional') {
+        const proResponse = await fetch(`/api/professional-accounts/status/${userId}`);
+        if (proResponse.ok) {
+          const proData = await proResponse.json();
+          setProfessionalAccount(proData);
+          
+          // Charger abonnement si compte pro existe
+          if (proData?.id) {
+            const subResponse = await fetch(`/api/subscriptions/by-professional/${proData.id}`);
+            if (subResponse.ok) {
+              const subData = await subResponse.json();
+              setSubscription(subData);
+            }
+          }
+        } else if (proResponse.status === 404) {
+          // Pas de compte pro trouvé
+          setProfessionalAccount(null);
+          setSubscription(null);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Erreur chargement données professionnelles:', error);
+    } finally {
+      setOnboardingLoading(false);
     }
-  }, [isAuthenticated, dbUser, isLoading]);
+  }, [dbUser?.type, onboardingLoading]);
+
+  // Nouvelle logique d'onboarding intelligente
+  React.useEffect(() => {
+    if (isLoading || onboardingLoading) return;
+    
+    // Pas d'utilisateur connecté = rien à faire
+    if (!isAuthenticated || !dbUser) {
+      setShowProfileSetup(false);
+      return;
+    }
+
+    // Charger les données professionnelles si nécessaire
+    if (dbUser.type === 'professional' && !professionalAccount && !onboardingLoading) {
+      loadProfessionalData(dbUser.id);
+      return;
+    }
+
+    // Détecter l'état d'onboarding avec toutes les données  
+    const minimalUser = {
+      id: dbUser.id,
+      type: dbUser.type as 'individual' | 'professional' | 'admin' | null,
+      profile_completed: dbUser.profile_completed
+    };
+    const onboardingState = detectOnboardingState(minimalUser, professionalAccount, subscription);
+    console.log(`🔧 [Onboarding] User: ${dbUser.type}`, {
+      step: onboardingState.step,
+      shouldShowPopup: onboardingState.shouldShowPopup,
+      canPost: onboardingState.canPost,
+      reason: onboardingState.reason
+    });
+
+    // Appliquer les décisions
+    setShowProfileSetup(onboardingState.shouldShowPopup);
+
+    // Gérer l'étape d'onboarding pour les pros
+    if (dbUser.type === 'professional' && onboardingState.shouldShowPopup) {
+      if (onboardingState.step === 'profile') {
+        setOnboardingStep('choice');
+      } else if (onboardingState.step === 'docs') {
+        setOnboardingStep('professional'); // Redirige vers docs
+      }
+    } else if (dbUser.type === 'individual' && onboardingState.shouldShowPopup) {
+      setOnboardingStep('choice');
+    }
+
+  }, [
+    isAuthenticated, 
+    dbUser, 
+    isLoading, 
+    onboardingLoading, 
+    professionalAccount, 
+    subscription,
+    loadProfessionalData
+  ]);
 
   // Auto-sélection véhicule via URL (admin)
   React.useEffect(() => {

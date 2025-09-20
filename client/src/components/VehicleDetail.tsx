@@ -16,16 +16,16 @@ import {
   Send,
 } from "lucide-react";
 import { FavoriteButton } from "./FavoriteButton";
-import { Vehicle } from "../types";
+import { Vehicle } from "@/types";
 import { WhatsAppContact } from "./WhatsAppContact";
 import { VehicleCard } from "./VehicleCard";
 import { Breadcrumb } from "./Breadcrumb";
-import { useApp } from "../contexts/AppContext";
+import { useApp } from "@/contexts/AppContext";
 import { Footer } from "./Footer";
 import { ContactSellerModal } from "./ContactSellerModal";
 import { ShareModal } from "./ShareModal";
-import { useAuth } from "../contexts/AuthContext";
-import brandIcon from "@assets/Brand_1752260033631.png";
+import { useAuth } from "@/contexts/AuthContext";
+import brandIcon from "@/assets/Brand_1752260033631.png";
 
 interface VehicleDetailProps {
   vehicle: Vehicle;

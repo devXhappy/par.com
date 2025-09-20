@@ -33,21 +33,21 @@ import {
   AlertTriangle,
   ArrowRight,
 } from "lucide-react";
-import { useApp } from "../contexts/AppContext";
-import { useAuth } from "../hooks/useAuth";
-import { useUnreadMessages } from "../hooks/useUnreadMessages";
+import { useApp } from "@/contexts/AppContext";
+import { useAuth } from "@/hooks/useAuth";
+import { useUnreadMessages } from "@/hooks/useUnreadMessages";
 import { ArrowLeft } from "lucide-react";
-import { useFavorites } from "../hooks/useFavorites";
-import { useSavedSearches } from "../hooks/useSavedSearches";
-import { Vehicle } from "../types";
-import brandIcon from "@assets/Brand_1752260033631.png";
+import { useFavorites } from "@/hooks/useFavorites";
+import { useSavedSearches } from "@/hooks/useSavedSearches";
+import { Vehicle } from "@/types";
+import brandIcon from "@/assets/Brand_1752260033631.png";
 import { DeletionQuestionnaireModal } from "./DeletionQuestionnaireModal";
 import { ProfessionalVerificationBanner } from "./ProfessionalVerificationBanner";
 import { ProfessionalVerificationBadge } from "./ProfessionalVerificationBadge";
 import { CompanyNameDisplay } from "./CompanyNameDisplay";
 import { BoostModal } from "./BoostModal";
 import { useQuery } from "@tanstack/react-query";
-import { useQuota } from "../hooks/useQuota";
+import { useQuota } from "@/hooks/useQuota";
 
 // Helper function to translate deletion reasons from English to French
 const translateDeletionReason = (reason: string): string => {
