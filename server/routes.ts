@@ -749,12 +749,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===============================
-  // API : Création / Mise à jour compte professionnel
+  // API : Création / Mise à jour compte (perso + pro)
   // ===============================
 
   app.post("/api/profile/complete", async (req, res) => {
     try {
-      console.log("🏢 Création/MàJ du compte professionnel...");
+      console.log("🔔 Création/MàJ du compte (perso ou pro)...");
       console.log("📄 Données reçues:", req.body);
 
       // 1) Authentification
@@ -774,97 +774,164 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "Token invalide" });
       }
 
-      // 2) Champs attendus
+      // 2) Champs reçus
       const {
         companyName,
         siret,
         companyAddress,
         phone,
-        email,
         website,
         description,
+        name,
+        city,
+        postalCode,
+        whatsapp,
       } = req.body;
 
-      if (!companyName || !siret) {
-        return res
-          .status(400)
-          .json({ error: "Nom entreprise et SIRET obligatoires" });
+      // ======================================
+      // CAS 1 : COMPTE PROFESSIONNEL
+      // ======================================
+      if (companyName && siret) {
+        console.log("🏢 Détection compte professionnel");
+
+        // Vérification SIRET
+        if (!/^\d{14}$/.test(siret)) {
+          return res
+            .status(400)
+            .json({ error: "SIRET invalide (14 chiffres requis)" });
+        }
+
+        // 1) Mettre à jour les infos communes dans users
+        const { data: updatedUser, error: userErr } = await supabaseServer
+          .from("users")
+          .update({
+            name, // ✅ forcé par celui saisi par l'utilisateur
+            phone: phone || null,
+            website: website || null,
+            city: city && city.trim() !== "" ? city : null,
+            postal_code:
+              postalCode && postalCode.trim() !== "" ? postalCode : null,
+            whatsapp: whatsapp || null,
+            profile_completed: true, // ✅ évite le retour au choix de compte
+            type: "professional", // ✅ marque comme pro
+          })
+          .eq("id", user.id)
+          .select()
+          .single();
+
+        if (userErr) {
+          console.error("❌ Erreur update user (pro):", userErr);
+          return res
+            .status(500)
+            .json({ error: "Erreur mise à jour utilisateur (pro)" });
+        }
+
+        // 2) Vérifier si un compte pro existe déjà
+        const { data: existing, error: existingErr } = await supabaseServer
+          .from("professional_accounts")
+          .select("id")
+          .eq("user_id", user.id)
+          .single();
+
+        if (existingErr && existingErr.code !== "PGRST116") {
+          console.error("❌ Erreur recherche compte pro:", existingErr);
+          return res
+            .status(500)
+            .json({ error: "Erreur recherche compte professionnel" });
+        }
+
+        // 3) Insert ou Update professional_accounts
+        let query;
+        if (existing) {
+          query = supabaseServer
+            .from("professional_accounts")
+            .update({
+              company_name: companyName,
+              company_address: companyAddress || null,
+              siret, // ✅ reste dans la table pro
+              description: description || null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", existing.id)
+            .select()
+            .single();
+        } else {
+          query = supabaseServer
+            .from("professional_accounts")
+            .insert({
+              user_id: user.id,
+              company_name: companyName,
+              company_address: companyAddress || null,
+              siret, // ✅ stocké uniquement ici
+              description: description || null,
+              membership: "free",
+              verification_status: "not_started",
+              created_at: new Date().toISOString(),
+            })
+            .select()
+            .single();
+        }
+
+        const { data: proAccount, error: upsertErr } = await query;
+        if (upsertErr) {
+          console.error("❌ Erreur sauvegarde compte pro:", upsertErr);
+          return res
+            .status(500)
+            .json({ error: "Erreur sauvegarde compte professionnel" });
+        }
+
+        console.log("✅ Compte professionnel enregistré:", proAccount.id);
+        return res.json({
+          success: true,
+          type: "professional",
+          user: updatedUser, // ✅ infos communes
+          professionalAccount: proAccount, // ✅ infos pro
+          message: existing ? "Compte pro mis à jour" : "Compte pro créé",
+        });
       }
 
-      // Vérif SIRET (14 chiffres)
-      if (!/^\d{14}$/.test(siret)) {
-        return res
-          .status(400)
-          .json({ error: "SIRET invalide (14 chiffres requis)" });
+      // ======================================
+      // CAS 2 : COMPTE PARTICULIER
+      // ======================================
+      console.log("👤 Détection compte particulier");
+
+      if (!name || !phone) {
+        return res.status(400).json({ error: "Nom et téléphone obligatoires" });
       }
 
-      // 3) Vérifier si un compte existe déjà pour ce user
-      const { data: existing, error: existingErr } = await supabaseServer
-        .from("professional_accounts")
-        .select("id")
-        .eq("user_id", user.id)
+      const { data: personal, error: personalErr } = await supabaseServer
+        .from("users")
+        .update({
+          name, // ✅ forcé par celui saisi par l'utilisateur
+          phone,
+          city: city && city.trim() !== "" ? city : null,
+          postal_code:
+            postalCode && postalCode.trim() !== "" ? postalCode : null,
+          whatsapp: whatsapp || null,
+          profile_completed: true, // ✅ évite le retour au choix de compte
+          type: "individual",
+        })
+        .eq("id", user.id)
+        .select()
         .single();
 
-      if (existingErr && existingErr.code !== "PGRST116") {
-        // PGRST116 = pas de ligne trouvée
-        console.error("❌ Erreur recherche compte:", existingErr);
-        return res.status(500).json({ error: "Erreur recherche compte" });
+      if (personalErr) {
+        console.error(
+          "❌ Erreur sauvegarde particulier:",
+          personalErr.message,
+          personalErr.details,
+        );
+        return res.status(500).json({
+          error: personalErr.message || "Erreur sauvegarde compte personnel",
+        });
       }
 
-      // 4) Insert ou Update
-      let query;
-      if (existing) {
-        // Mise à jour
-        query = supabaseServer
-          .from("professional_accounts")
-          .update({
-            company_name: companyName,
-            siret,
-            company_address: companyAddress || null,
-            phone: phone || null,
-            email: email || null,
-            website: website || null,
-            description: description || null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", existing.id)
-          .select()
-          .single();
-      } else {
-        // Création
-        query = supabaseServer
-          .from("professional_accounts")
-          .insert({
-            user_id: user.id,
-            company_name: companyName,
-            siret,
-            company_address: companyAddress || null,
-            phone: phone || null,
-            email: email || null,
-            website: website || null,
-            description: description || null,
-            membership: "free",
-            verification_status: "not_started",
-            created_at: new Date().toISOString(),
-          })
-          .select()
-          .single();
-      }
-
-      const { data: proAccount, error: upsertErr } = await query;
-      if (upsertErr) {
-        console.error("❌ Erreur sauvegarde compte pro:", upsertErr);
-        return res
-          .status(500)
-          .json({ error: "Erreur sauvegarde compte professionnel" });
-      }
-
-      console.log("✅ Compte professionnel enregistré:", proAccount.id);
-
+      console.log("✅ Compte particulier mis à jour:", personal.id);
       return res.json({
         success: true,
-        professionalAccount: proAccount,
-        message: existing ? "Compte pro mis à jour" : "Compte pro créé",
+        type: "personal",
+        profile: personal,
+        message: "Compte personnel mis à jour",
       });
     } catch (err) {
       console.error("❌ Erreur API /api/profile/complete:", err);
@@ -1555,7 +1622,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const { data: customization, error } = await supabaseServer
           .from("professional_accounts")
           .select(
-            "company_logo, banner_image, brand_colors, description, specialties, certifications",
+            "avatar, banner_image, brand_colors, description, specialties, certifications",
           )
           .eq("user_id", userId)
           .single();
@@ -1588,7 +1655,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { data, error } = await supabaseServer
         .from("professional_accounts")
         .update({
-          company_logo: customizationData.company_logo,
+          avatar: customizationData.avatar,
           banner_image: customizationData.banner_image,
           brand_colors: customizationData.brand_colors,
           description: customizationData.description,
@@ -1772,7 +1839,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         description,
         specialties,
         certifications,
-        company_logo,
+        avatar,
         banner_image,
         brand_colors,
       } = req.body;
@@ -1797,7 +1864,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           description: description?.trim() || null,
           specialties: specialties || [],
           certifications: certifications || [],
-          company_logo: company_logo?.trim() || null,
+          avatar: avatar?.trim() || null,
           banner_image: banner_image?.trim() || null,
           brand_colors: brand_colors || null,
           updated_at: new Date().toISOString(),
