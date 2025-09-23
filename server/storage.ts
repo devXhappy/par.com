@@ -62,9 +62,7 @@ export interface IStorage {
   updateVehicleActiveStatus(id: string, isActive: boolean): Promise<boolean>;
 
   // Professional accounts and subscriptions
-  checkProfessionalListingQuota(
-    userId: string,
-  ): Promise<{
+  checkListingQuota(userId: string): Promise<{
     canCreate: boolean;
     activeListings: number;
     maxListings: number | null;
@@ -140,22 +138,6 @@ export class SupabaseStorage implements IStorage {
     }
     return data as User;
   }
-  /*
-  async getUserByEmail(email: string): Promise<User | undefined> {
-    const { data, error } = await supabaseServer
-      .from('users')
-      .select('*')
-      .eq('email', email)
-      .single();
-    
-    if (error) {
-      console.error('Error fetching user by email:', error);
-      return undefined;
-    }
-    return data as User;
-  }
-*/
-
   async getUserByEmail(email: string): Promise<User | undefined> {
     const { data, error } = await supabaseServer
       .from("users")
@@ -178,7 +160,6 @@ export class SupabaseStorage implements IStorage {
 
     if (!data) return undefined;
 
-    
     // ✅ Ajouter les données professional_accounts
     const enrichedData = {
       ...data, // ← GARDE company_logo de users
@@ -316,8 +297,9 @@ export class SupabaseStorage implements IStorage {
 
     // Transformer la donnée unique vers le format Vehicle avec user
     const annonce = data;
-    const transformedData = {
-      id: annonce.id.toString(),
+
+    const transformedData: Vehicle = {
+      id: annonce.id?.toString() ?? "",
       userId: annonce.user_id,
       user: annonce.users
         ? {
@@ -328,7 +310,6 @@ export class SupabaseStorage implements IStorage {
             whatsapp: annonce.users.whatsapp,
             type: annonce.users.type,
             companyName: annonce.users.company_name,
-            //companyLogo: annonce.users.company_logo,
             address: annonce.users.address,
             city: annonce.users.city,
             postalCode: annonce.users.postal_code,
@@ -339,69 +320,61 @@ export class SupabaseStorage implements IStorage {
             specialties: safeJsonParse(annonce.users.specialties),
             verified: annonce.users.verified,
             emailVerified: annonce.users.email_verified,
-            contactPreferences: safeJsonParse(
-              annonce.users.contact_preferences,
-            ),
+            contactPreferences: safeJsonParse(annonce.users.contact_preferences),
             createdAt: new Date(annonce.users.created_at),
             lastLoginAt: annonce.users.last_login_at
               ? new Date(annonce.users.last_login_at)
               : undefined,
-            // Données professionnelles via jointure
             professionalAccount: annonce.users.professional_accounts?.[0]
               ? {
-                  companyName:
-                    annonce.users.professional_accounts[0].company_name,
+                  companyName: annonce.users.professional_accounts[0].company_name,
                   phone: annonce.users.professional_accounts[0].phone,
                   email: annonce.users.professional_accounts[0].email,
                   website: annonce.users.professional_accounts[0].website,
-                  description:
-                    annonce.users.professional_accounts[0].description,
-                  isVerified:
-                    annonce.users.professional_accounts[0].is_verified,
+                  description: annonce.users.professional_accounts[0].description,
+                  isVerified: annonce.users.professional_accounts[0].is_verified,
                   verificationStatus:
-                    annonce.users.professional_accounts[0]
-                      .verification_process_status,
-                  companyLogo:
-                    annonce.users.professional_accounts[0].avatar,
-                  bannerImage:
-                    annonce.users.professional_accounts[0].banner_image,
+                    annonce.users.professional_accounts[0].verification_process_status,
+                  companyLogo: annonce.users.professional_accounts[0].avatar,
+                  bannerImage: annonce.users.professional_accounts[0].banner_image,
                 }
               : undefined,
           }
         : undefined,
-      title: annonce.title,
-      description: annonce.description,
+
+      title: annonce.title ?? "",
+      description: annonce.description ?? "",
       category: annonce.category,
-      brand: annonce.brand,
-      model: annonce.model,
-      year: annonce.year,
-      mileage: annonce.mileage,
-      fuelType: annonce.fuel_type,
-      condition: annonce.condition,
-      price: annonce.price,
-      location: annonce.location,
-      images: annonce.images || [],
-      features: annonce.features || [],
-      listingType: annonce.listing_type || "sale", // Nouveau champ listing_type
-      // Informations de contact spécifiques à l'annonce
-      contactPhone: annonce.contact_phone || null,
-      contactEmail: annonce.contact_email || null,
-      contactWhatsapp: annonce.contact_whatsapp || null,
-      hidePhone: annonce.hide_phone || false,
-      isPremium: annonce.is_premium,
-      premiumType: annonce.premium_type,
+      brand: annonce.brand ?? "",
+      model: annonce.model ?? "",
+      year: Number(annonce.year) || 0,
+      mileage: annonce.mileage ?? undefined,
+      fuelType: annonce.fuel_type ?? undefined,
+      condition: (annonce.condition as "new" | "used" | "damaged") ?? "used",
+      price: Number(annonce.price) || 0,
+      location: annonce.location ?? "",
+      images: annonce.images ?? [],
+      features: annonce.features ?? [],
+      isPremium: Boolean(annonce.is_premium),
+      premiumType: annonce.premium_type ?? undefined,
       premiumExpiresAt: annonce.premium_expires_at
         ? new Date(annonce.premium_expires_at)
-        : undefined,
+        : null,
       createdAt: new Date(annonce.created_at),
       updatedAt: new Date(annonce.updated_at),
-      views: annonce.views,
-      favorites: annonce.favorites,
-      status: annonce.status,
+      views: annonce.views ?? 0,
+      favorites: annonce.favorites ?? 0,
+      status:
+        (annonce.status as "draft" | "pending" | "approved" | "rejected") ?? "draft",
+      rejectionReason: annonce.rejection_reason ?? undefined,
       isActive: annonce.is_active !== false,
+      isBoosted: annonce.is_boosted ?? false,
+      boostedUntil: annonce.boosted_until
+        ? new Date(annonce.boosted_until)
+        : undefined,
     };
 
-    return transformedData as Vehicle;
+    return transformedData;
   }
 
   async getVehicleWithUser(id: string): Promise<Vehicle | undefined> {
@@ -1698,10 +1671,8 @@ export class SupabaseStorage implements IStorage {
       return false;
     }
   }
-
-  async checkProfessionalListingQuota(
-    userId: string,
-  ): Promise<{
+  //
+  async checkListingQuota(userId: string): Promise<{
     canCreate: boolean;
     activeListings: number;
     maxListings: number | null;
@@ -1718,12 +1689,22 @@ export class SupabaseStorage implements IStorage {
         .single();
 
       if (paError || !professionalAccount) {
-        // Utilisateur individuel - pas de limite
-        console.log("👤 Utilisateur individuel détecté - aucune limite");
-        return { canCreate: true, activeListings: 0, maxListings: null };
+        // 👉 Cas Particulier (gratuit par défaut, quota en dur = 5 annonces actives max)
+        const activeListings = await this.countActiveListingsByUser(userId);
+        const maxListings = 5; // quota particulier gratuit (hardcodé)
+
+        return {
+          canCreate: activeListings < maxListings,
+          activeListings,
+          maxListings,
+          message:
+            activeListings >= maxListings
+              ? "Limite atteinte (5 annonces). Passez à un plan supérieur pour publier plus d'annonces."
+              : undefined,
+        };
       }
 
-      // 2. Récupérer l'abonnement actif
+      // 2. Cas Professionnel → récupérer l'abonnement actif
       const { data: subscription, error: subError } = await supabaseServer
         .from("subscriptions")
         .select(
@@ -1742,23 +1723,22 @@ export class SupabaseStorage implements IStorage {
         .single();
 
       if (subError || !subscription) {
-        // Aucun abonnement actif - limite par défaut (ex: 5 annonces gratuites)
-        console.log("📦 Aucun abonnement actif - limite par défaut");
+        // 👉 Pro sans abonnement actif (rare, normalement impossible) → quota par défaut = 5
         const activeListings = await this.countActiveListingsByUser(userId);
-        const defaultLimit = 5; // Limite par défaut pour les comptes pro sans abonnement
+        const maxListings = 5;
 
         return {
-          canCreate: activeListings < defaultLimit,
+          canCreate: activeListings < maxListings,
           activeListings,
-          maxListings: defaultLimit,
+          maxListings,
           message:
-            activeListings >= defaultLimit
-              ? "Limite atteinte. Souscrivez à un abonnement pour publier plus d'annonces."
+            activeListings >= maxListings
+              ? "Aucun abonnement actif. Limite atteinte (5 annonces)."
               : undefined,
         };
       }
 
-      // 3. Vérifier les limites de l'abonnement
+      // 3. Cas Professionnel avec abonnement actif → lire quota dans subscription_plans
       const maxListings = (subscription as any).subscription_plans
         ?.max_listings;
       const activeListings = await this.countActiveListingsByUser(userId);
@@ -1784,7 +1764,7 @@ export class SupabaseStorage implements IStorage {
       };
     } catch (error) {
       console.error("❌ Erreur vérification quota:", error);
-      // En cas d'erreur, autoriser la création (fail-safe)
+      // En cas d'erreur → fail-safe (autoriser la création)
       return {
         canCreate: true,
         activeListings: 0,

@@ -417,7 +417,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .join(" ") || "Utilisateur"
     );
   }
-
+/*
   app.post("/api/vehicles", async (req, res) => {
     try {
       const vehicleData = req.body;
@@ -426,6 +426,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         JSON.stringify(vehicleData, null, 2),
       );
 
+      console.log("DEBUG USER ID:", vehicleData.userId);
       // Vérifier si l'utilisateur existe, sinon le créer automatiquement
       if (vehicleData.userId) {
         const userExists = await ensureUserExists(
@@ -452,10 +453,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
 
-        // 🚦 VÉRIFICATION DU QUOTA POUR LES COMPTES PROFESSIONNELS
-        const quotaCheck = await storage.checkProfessionalListingQuota(
-          vehicleData.userId,
-        );
+        // 🚦 VÉRIFICATION DU QUOTA POUR LES COMPTES
+        const quotaCheck = await storage.checkListingQuota(vehicleData.userId);
         console.log(`📊 Résultat vérification quota:`, quotaCheck);
 
         if (!quotaCheck.canCreate) {
@@ -477,6 +476,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Failed to create vehicle" });
     }
   });
+  */
+
+  app.post("/api/vehicles", async (req, res) => {
+    try {
+      const vehicleData = req.body;
+      console.log(
+        "🔍 DONNÉES REÇUES PAR L'API:",
+        JSON.stringify(vehicleData, null, 2),
+      );
+      console.log("DEBUG USER ID:", vehicleData.userId);
+
+      if (!vehicleData.userId) {
+        return res.status(400).json({ error: "userId manquant" });
+      }
+
+      // 🔐 Vérifier que l'utilisateur existe
+      const userExists = await ensureUserExists(
+        vehicleData.userId,
+        vehicleData.contact?.email || vehicleData.contact_email,
+      );
+
+      if (!userExists) {
+        const contactEmail =
+          vehicleData.contact?.email ||
+          vehicleData.contact_email ||
+          "user@example.com";
+        const contactPhone =
+          vehicleData.contact?.phone || vehicleData.contact_phone || "";
+        const city = vehicleData.location?.city || vehicleData.location || "";
+        const postalCode =
+          vehicleData.location?.postalCode || vehicleData.postal_code || null;
+
+        await createUserFromAuth(vehicleData.userId, contactEmail, {
+          phone: contactPhone,
+          city: city,
+          postal_code: postalCode,
+        });
+      }
+
+      // 🚦 Vérification du quota AVANT création
+      const quotaCheck = await storage.checkListingQuota(vehicleData.userId);
+      console.log(`📊 Résultat vérification quota:`, quotaCheck);
+
+      if (!quotaCheck?.canCreate) {
+        // ⛔ Stopper ici
+        return res.status(403).json({
+          error: "Quota d'annonces atteint",
+          message: quotaCheck?.message || "Vous avez atteint votre limite",
+          quota: {
+            activeListings: quotaCheck?.activeListings ?? 0,
+            maxListings: quotaCheck?.maxListings ?? 0,
+          },
+        });
+      }
+
+      // ✅ Si quota OK → Création
+      const vehicle = await storage.createVehicle(vehicleData);
+      return res.status(201).json(vehicle);
+
+    } catch (error) {
+      console.error("❌ Error creating vehicle:", error);
+      return res.status(500).json({ error: "Failed to create vehicle" });
+    }
+  });
+
 
   app.put("/api/vehicles/:id", async (req, res) => {
     try {
@@ -498,7 +562,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { userId } = req.params;
       console.log(`📊 Récupération quota pour utilisateur: ${userId}`);
 
-      const quotaInfo = await storage.checkProfessionalListingQuota(userId);
+      const quotaInfo = await storage.checkListingQuota(userId);
       res.json(quotaInfo);
     } catch (error) {
       console.error("❌ Erreur récupération quota:", error);
@@ -1711,7 +1775,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { userId } = req.params;
       console.log(`💳 Vérification abonnement pour user ${userId}...`);
 
-      // Récupérer l'abonnement actif depuis la base de données
+      // Récup �rer l'abonnement actif depuis la base de données
       const { data: subscription, error } = await supabaseServer
         .from("subscriptions")
         .select(
@@ -2227,7 +2291,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           },
         ],
         mode: "payment",
-        success_url: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}&type=boost`,
+        //         success_url: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}&type=boost`,
+        success_url: `${baseUrl}/success-boost?session_id={CHECKOUT_SESSION_ID}`,
+
         cancel_url: `${baseUrl}/dashboard?boost_canceled=true`,
         metadata: {
           type: "boost",
@@ -2369,6 +2435,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error checking boost status:", error);
       res.status(500).json({ error: "Failed to check boost status" });
+    }
+  });
+
+  // API pour confirmer le succès d’un paiement Boost
+  app.get("/api/boost/success", async (req, res) => {
+    try {
+      const { session_id } = req.query;
+      if (!session_id) {
+        return res.status(400).json({ error: "session_id is required" });
+      }
+
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+      const session = await stripe.checkout.sessions.retrieve(
+        session_id as string,
+      );
+
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      if (
+        session.payment_status === "paid" &&
+        session.metadata?.type === "boost"
+      ) {
+        // Optionnel : activer le boost ici si jamais le webhook n'a pas encore tourné
+        await storage.activateBoostWithLog(session.id);
+        return res.json({ success: true, message: "Boost activé" });
+      }
+
+      res.json({ success: false, message: "Paiement non confirmé" });
+    } catch (error) {
+      console.error("Error in /api/boost/success:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
