@@ -2,11 +2,11 @@ import dotenv from 'dotenv';
 dotenv.config();
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL
+const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co'
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-if (!supabaseUrl) {
-  throw new Error('VITE_SUPABASE_URL environment variable is required')
+if (!process.env.VITE_SUPABASE_URL) {
+  console.warn('VITE_SUPABASE_URL environment variable is not set. Using placeholder URL. Please configure your .env file for proper functionality.')
 }
 
 if (!supabaseServiceKey) {
